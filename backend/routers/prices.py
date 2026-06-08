@@ -26,6 +26,19 @@ def refresh_prices(db: Session = Depends(get_db)):
 
     for symbol, (price, date_str) in price_map.items():
         snapshot_date = date.fromisoformat(date_str)
+
+        # 检查今天是否已经拉取过，避免触发 IntegrityError 导致事务回滚失效
+        existing = db.execute(
+            select(DailySnapshot).where(
+                DailySnapshot.symbol == symbol,
+                DailySnapshot.date == snapshot_date
+            )
+        ).scalar_one_or_none()
+
+        if existing:
+            skipped += 1
+            continue
+
         snapshot = DailySnapshot(
             symbol=symbol,
             date=snapshot_date,
@@ -36,9 +49,8 @@ def refresh_prices(db: Session = Depends(get_db)):
             db.flush()
             updated += 1
         except IntegrityError:
-            # ENG-8: UNIQUE(symbol, date) 冲突 = 今天已拉过，忽略
             db.rollback()
-            skipped += 1
+            errors.append(f"{symbol} 写入快照冲突")
 
     db.commit()
     return RefreshResult(updated=updated, skipped=skipped, errors=errors)

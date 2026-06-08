@@ -1,15 +1,15 @@
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class PositionCreate(BaseModel):
     symbol: str
     name: str
     asset_type: Literal["stock", "etf", "fund"]
-    shares: Decimal
-    avg_cost: Decimal
+    shares: Decimal = Field(ge=0)
+    avg_cost: Decimal = Field(ge=0)
 
 
 class PositionOut(BaseModel):
@@ -30,8 +30,8 @@ class PositionOut(BaseModel):
 class JournalCreate(BaseModel):
     symbol: str
     action: Literal["buy", "sell"]
-    shares: Decimal
-    price: Decimal
+    shares: Decimal = Field(gt=0)
+    price: Decimal = Field(gt=0)
     reason: Optional[str] = None
     trade_date: date
 

@@ -47,11 +47,17 @@ def record_trade(body: JournalCreate, db: Session = Depends(get_db)):
             old_shares = Decimal(str(pos.shares))
             old_avg = Decimal(str(pos.avg_cost))
             new_shares = old_shares + body.shares
+            if new_shares <= 0:
+                raise HTTPException(422, "计算后的持仓份额必须大于 0")
             new_avg = (old_shares * old_avg + body.shares * body.price) / new_shares
             pos.shares = new_shares
             pos.avg_cost = new_avg
         else:
-            pos.shares = Decimal(str(pos.shares)) - body.shares
+            new_shares = Decimal(str(pos.shares)) - body.shares
+            if new_shares == 0:
+                db.delete(pos)
+            else:
+                pos.shares = new_shares
 
     db.commit()
     db.refresh(entry)
