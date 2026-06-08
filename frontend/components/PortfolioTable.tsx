@@ -6,6 +6,7 @@ import RecordTradeModal from "./RecordTradeModal";
 interface Props {
   positions: Position[];
   onRefresh: () => void;
+  isRefreshing?: boolean;
 }
 
 function pnlColor(pct: number) {
@@ -26,12 +27,20 @@ function RowSkeleton() {
   );
 }
 
-export default function PortfolioTable({ positions, onRefresh }: Props) {
+export default function PortfolioTable({ positions, onRefresh, isRefreshing }: Props) {
   const [tradeTarget, setTradeTarget] = useState<Position | null>(null);
 
   return (
     <>
-      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+      <div className={`overflow-x-auto rounded-xl border border-gray-200 bg-white relative transition-opacity duration-300 ${isRefreshing ? "opacity-60 pointer-events-none" : ""}`}>
+        {isRefreshing && (
+          <div className="absolute inset-0 flex items-center justify-center bg-white/40 z-10 backdrop-blur-[1px]">
+            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/95 shadow-sm border border-gray-100">
+              <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
+              <span className="text-xs text-gray-600 font-medium">正在拉取最新行情...</span>
+            </div>
+          </div>
+        )}
         <table className="min-w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 text-gray-500 text-xs uppercase tracking-wide">
