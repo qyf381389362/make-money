@@ -1,4 +1,4 @@
-<!-- /autoplan restore point: /Users/michael/.gstack/projects/make-money/main-autoplan-restore-20260608-234228.md -->
+<!-- /autoplan restore point: /Users/michael/.gstack/projects/make-money/main-autoplan-restore-20260609-125402.md -->
 # v1a 实施计划：持仓仪表板 + 决策日记
 
 基于 /office-hours 设计文档（2026-05-31），v1a 是最小可用版本。
@@ -345,19 +345,30 @@ baostock 返回字符串，服务层必须 `float(rs.get_row_data()[1])`。
 
 ### 📝 实施任务清单 (Implementation Tasks)
 
+#### v1a — 基础持仓与决策日记 (已合并交付 ✅)
 - [x] **T1 (P1, human: ~30min / CC: ~5min)** — `backend` — 增加买入均价计算除零保护
-  - Surfaced by: Eng Review — `journal.py` 除零 GAP 拦截
-  - Files: [journal.py](file:///Users/michael/Documents/projects/make-money/backend/routers/journal.py#L46-L53)
-  - Verify: 输入 `new_shares = 0` 时抛出 422 异常
+  - Files: [journal.py](file:///Users/michael/Documents/projects/make-money/backend/routers/journal.py)
 - [x] **T2 (P2, human: ~1h / CC: ~10min)** — `backend` — 为加权平均成本与超卖逻辑编写单元测试
-  - Surfaced by: Eng Review — 缺乏核心交易逻辑的覆盖测试
-  - Files: [test_journal.py](file:///Users/michael/Documents/projects/make-money/backend/tests/test_journal.py) (New)
-  - Verify: `pytest` 运行通过
+  - Files: [test_journal.py](file:///Users/michael/Documents/projects/make-money/backend/tests/test_journal.py)
 - [x] **T3 (P2, human: ~30min / CC: ~5min)** — `frontend` — 价格刷新期间增加按钮禁用与加载骨架屏过渡状态
-  - Surfaced by: Design Review — Loading 状态未完全覆盖
-  - Files: [page.tsx](file:///Users/michael/Documents/projects/make-money/frontend/app/page.tsx#L88-L95)
-  - Verify: 手动点击刷新，可见按钮置灰及 Skeleton 加载中效果
-- [x] **T4 (P1, human: ~30min / CC: ~5min)** — `backend` — 优化 positions 的 K线最新价查询减少 SQL N+1
-  - Surfaced by: Eng Review — SQL 查询性能隐患
-  - Files: [positions.py](file:///Users/michael/Documents/projects/make-money/backend/routers/positions.py#L29-L38)
-  - Verify: 一切性 IN 查询或连接查询，查日志确认 SQL 耗时
+  - Files: [page.tsx](file:///Users/michael/Documents/projects/make-money/frontend/app/page.tsx)
+- [x] **T4 (P1, human: ~30min / CC: ~5min)** — `backend` — 优化 positions 的 K 线最新价查询减少 SQL N+1
+  - Files: [positions.py](file:///Users/michael/Documents/projects/make-money/backend/routers/positions.py)
+
+#### v1b — AI 决策复盘与基金净值获取 (代开发 ⏳)
+- [ ] **T5 (P1, human: ~2.5h / CC: ~15min)** — `backend` — 接入 Gemini API 实现决策日记异步 AI 心理审计
+  - Files: `backend/models.py`, `backend/schemas.py`, `backend/routers/journal.py`, `backend/services/gemini.py`
+  - Verify: 写入日记交易记录后，数据库在 BackgroundTasks 运行后自动填充正确的 `motivation_type` 与 `motivation_analysis`。
+- [ ] **T6 (P2, human: ~2h / CC: ~15min)** — `frontend` — 新增前端 AI 决策偏差统计看版
+  - Files: `frontend/app/page.tsx`
+  - Verify: 能根据心理审计类别分类统计已平仓的 P&L，并以图表展现盈亏占比。
+- [ ] **T7 (P1, human: ~1.5h / CC: ~10min)** — `backend` — 场外公募基金（如天天基金 API）价格拉取支持与路由
+  - Files: `backend/services/baostock_service.py`, `backend/routers/prices.py`
+  - Verify: 输入 6 位纯数字基金代码刷新时，自动路由拉取天天基金数据源，并存入快照数据库。
+- [ ] **T8 (P2, human: ~1h / CC: ~10min)** — `frontend` — 前端表格对场外基金与 ETF 混合损益显示支持
+  - Files: `frontend/components/PortfolioTable.tsx`
+  - Verify: 表格成功渲染单位净值和净值日期，刷新期不发生崩溃。
+- [ ] **T9 (P3, human: ~1h / CC: ~5min)** — `frontend` — 日记列表原因模糊搜索与时间日期范围筛选
+  - Files: `frontend/components/JournalList.tsx`
+  - Verify: 顶部搜索框输入关键字可前端即时过滤决策原因，支持按月和日期段过滤列表。
+
