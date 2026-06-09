@@ -48,11 +48,10 @@ export default function Dashboard() {
   // 汇总数据
   const totalCost = positions.reduce((s, p) => s + parseFloat(p.shares) * parseFloat(p.avg_cost), 0);
   const totalValue = positions.reduce((s, p) => {
-    if (!p.current_price) return s;
-    return s + parseFloat(p.shares) * parseFloat(p.current_price);
+    const price = p.current_price ? parseFloat(p.current_price) : parseFloat(p.avg_cost);
+    return s + parseFloat(p.shares) * price;
   }, 0);
-  const hasAllPrices = positions.length > 0 && positions.every((p) => p.current_price !== null);
-  const totalPnl = hasAllPrices ? totalValue - totalCost : null;
+  const totalPnl = positions.length > 0 ? totalValue - totalCost : null;
   const totalPnlPct = totalPnl !== null && totalCost > 0 ? (totalPnl / totalCost) * 100 : null;
 
   const filteredJournal = filterSymbol
@@ -65,7 +64,7 @@ export default function Dashboard() {
       <div className="bg-white rounded-2xl border border-gray-200 px-6 py-5 flex flex-col sm:flex-row sm:items-center gap-6">
         <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-4">
           <Stat label="总成本" value={`¥${totalCost.toFixed(2)}`} />
-          <Stat label="总市值" value={hasAllPrices ? `¥${totalValue.toFixed(2)}` : "--"} />
+          <Stat label="总市值" value={positions.length > 0 ? `¥${totalValue.toFixed(2)}` : "--"} />
           <Stat
             label="总盈亏"
             value={totalPnl !== null ? `${totalPnl >= 0 ? "+" : ""}${totalPnl.toFixed(2)}` : "--"}
@@ -120,6 +119,7 @@ export default function Dashboard() {
           <PortfolioTable
             positions={positions}
             onRefresh={load}
+            isRefreshing={refreshing}
           />
         )}
       </section>

@@ -3,7 +3,10 @@ import baostock as bs
 
 
 def _to_bs_code(symbol: str) -> str:
-    return f"sh.{symbol}" if symbol.startswith("6") else f"sz.{symbol}"
+    if symbol.startswith(("5", "6", "9")):
+        return f"sh.{symbol}"
+    else:
+        return f"sz.{symbol}"
 
 
 def fetch_prices(symbols: list[str]) -> dict[str, tuple[float, str]]:

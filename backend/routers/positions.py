@@ -25,19 +25,36 @@ def _is_stale(price_date: Optional[date]) -> bool:
 @router.get("", response_model=list[PositionOut])
 def list_positions(db: Session = Depends(get_db)):
     positions = db.execute(select(Position)).scalars().all()
+    if not positions:
+        return []
+
+    from sqlalchemy import func
+    symbols = [pos.symbol for pos in positions]
+
+    # 使用 window function 一次性拉取所有 symbol 最新一条 snapshot
+    subq = (
+        select(
+            DailySnapshot.symbol,
+            DailySnapshot.close_price,
+            DailySnapshot.date,
+            func.row_number().over(
+                partition_by=DailySnapshot.symbol,
+                order_by=DailySnapshot.date.desc()
+            ).label("rn")
+        )
+        .where(DailySnapshot.symbol.in_(symbols))
+        .subquery()
+    )
+
+    stmt = select(subq.c.symbol, subq.c.close_price, subq.c.date).where(subq.c.rn == 1)
+    snapshots = db.execute(stmt).all()
+    price_map = {row.symbol: (row.close_price, row.date) for row in snapshots}
 
     result = []
     for pos in positions:
-        # 取该 symbol 最新快照
-        snapshot = db.execute(
-            select(DailySnapshot)
-            .where(DailySnapshot.symbol == pos.symbol)
-            .order_by(DailySnapshot.date.desc())
-            .limit(1)
-        ).scalar_one_or_none()
-
-        current_price = Decimal(str(snapshot.close_price)) if snapshot else None
-        price_date = snapshot.date if snapshot else None
+        snap = price_map.get(pos.symbol)
+        current_price = Decimal(str(snap[0])) if snap else None
+        price_date = snap[1] if snap else None
 
         result.append(
             PositionOut(
