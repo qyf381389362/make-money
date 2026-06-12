@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import Base, engine
-from routers import journal, positions, prices
+from routers import journal, positions, prices, import_trades
 
 Base.metadata.create_all(bind=engine)
 
@@ -18,6 +18,7 @@ app.add_middleware(
 app.include_router(positions.router)
 app.include_router(journal.router)
 app.include_router(prices.router)
+app.include_router(import_trades.router)
 
 
 @app.get("/health")
