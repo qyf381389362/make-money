@@ -48,6 +48,36 @@ export interface RefreshResult {
   errors: string[];
 }
 
+export interface ParsedTrade {
+  row_index: number;
+  trade_date: string | null;
+  symbol: string | null;
+  name: string | null;
+  asset_type: string;
+  action: Action | null;
+  shares: string | null;
+  price: string | null;
+  fee: string;
+  external_id: string | null;
+  status: "ok" | "skip" | "error";
+  note: string | null;
+}
+
+export interface PreviewResult {
+  rows: ParsedTrade[];
+  parsable_count: number;
+  skip_count: number;
+  error_count: number;
+  dup_count: number;
+}
+
+export interface CommitResult {
+  imported: number;
+  skipped_dup: number;
+  failed: { row: number; reason: string }[];
+  committed: boolean;
+}
+
 export const api = {
   positions: {
     list: () => request<Position[]>("/positions"),
@@ -77,5 +107,24 @@ export const api = {
   },
   prices: {
     refresh: () => request<RefreshResult>("/prices/refresh", { method: "POST" }),
+  },
+  import: {
+    preview: async (file: File, broker: string): Promise<PreviewResult> => {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("broker", broker);
+      // 走裸 fetch：FormData 需浏览器自动设置 multipart boundary，不能套 JSON 头
+      const res = await fetch(`${BASE}/import/preview`, { method: "POST", body: fd });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail ?? `HTTP ${res.status}`);
+      }
+      return res.json();
+    },
+    commit: (rows: ParsedTrade[]) =>
+      request<CommitResult>("/import/commit", {
+        method: "POST",
+        body: JSON.stringify({ rows }),
+      }),
   },
 };

@@ -37,7 +37,15 @@ class JournalEntry(Base):
     motivation_type = Column(String(50), nullable=True)
     ai_audit = Column(Text, nullable=True)
 
-    __table_args__ = (Index("idx_journal_symbol", "symbol"),)
+    # 新增字段用于交割单导入（T11）
+    external_id = Column(String(64), nullable=True)  # 券商成交编号，用于幂等去重
+    fee = Column(Numeric(12, 4), nullable=True)      # 手续费/印花税/过户费合计
+
+    __table_args__ = (
+        Index("idx_journal_symbol", "symbol"),
+        # external_id 唯一索引：NULL 不参与唯一性，手工录入(NULL)不会冲突
+        Index("uk_journal_external_id", "external_id", unique=True),
+    )
 
 
 class DailySnapshot(Base):

@@ -46,7 +46,9 @@ export default function AiMetrics({ entries }: AiMetricsProps) {
 
       const type = entry.motivation_type;
       if (!type) {
-        currentAnalyzingCount += 1;
+        // 仅“填写了原因、等待 AI 审计”的才算分析中；
+        // 导入的历史交易没有原因，永远不会触发审计，不计入
+        if (entry.reason) currentAnalyzingCount += 1;
       } else if (currentStats[type]) {
         currentStats[type].count += 1;
         currentStats[type].pnl += pnlVal;
@@ -88,7 +90,8 @@ export default function AiMetrics({ entries }: AiMetricsProps) {
   }, [sellEntries]);
 
   // 计算理性交易比例，作为交易健康分
-  const totalAnalyzed = totalSells - analyzingCount;
+  // 已被 AI 分类的交易数（有 motivation_type 的）；导入的无原因交易不计入分母
+  const totalAnalyzed = Object.values(stats).reduce((sum, s) => sum + s.count, 0);
   const rationalCount = stats["理性分析"].count;
   const healthScore = totalAnalyzed > 0 ? Math.round((rationalCount / totalAnalyzed) * 100) : 100;
 
