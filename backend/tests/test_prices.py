@@ -121,3 +121,56 @@ def test_refresh_prices_integrity_error(mock_fetch):
         assert data["skipped"] == 0
         assert len(data["errors"]) == 1
         assert "写入快照冲突" in data["errors"][0]
+
+
+@patch("routers.prices.fetch_fund_prices")
+@patch("routers.prices.fetch_prices")
+def test_refresh_prices_routing(mock_fetch_stock, mock_fetch_fund):
+    db = TestingSessionLocal()
+    pos1 = Position(symbol="600519", name="贵州茅台", asset_type="stock", shares=Decimal("10"), avg_cost=Decimal("1500"))
+    pos2 = Position(symbol="161725", name="招商中证白酒", asset_type="fund", shares=Decimal("1000"), avg_cost=Decimal("1"))
+    db.add_all([pos1, pos2])
+    db.commit()
+    db.close()
+
+    today = date.today()
+    mock_fetch_stock.return_value = ({"600519": (1510.0, today.isoformat())}, [])
+    mock_fetch_fund.return_value = ({"161725": (0.8350, today.isoformat())}, [])
+
+    response = client.post("/prices/refresh")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["updated"] == 2
+    assert data["errors"] == []
+
+    # 验证是否两个 mock 方法均被正确参数调用
+    mock_fetch_stock.assert_called_once_with(["600519"])
+    mock_fetch_fund.assert_called_once_with(["161725"])
+
+
+from services.baostock_service import fetch_fund_prices
+
+@patch("httpx.Client.get")
+def test_fetch_fund_prices_success(mock_get):
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.text = 'jsonpgz({"fundcode":"161725","name":"招商中证白酒","dwjz":"0.8350","jzrq":"2026-06-08"});'
+    mock_get.return_value = mock_resp
+
+    results, errors = fetch_fund_prices(["161725"])
+    assert "161725" in results
+    assert results["161725"] == (0.8350, "2026-06-08")
+    assert not errors
+
+
+@patch("httpx.Client.get")
+def test_fetch_fund_prices_error_response(mock_get):
+    # 测试天天基金非标或错误响应
+    mock_resp = MagicMock()
+    mock_resp.status_code = 500
+    mock_get.return_value = mock_resp
+
+    results, errors = fetch_fund_prices(["161725"])
+    assert "161725" not in results
+    assert len(errors) == 1
+    assert "状态码异常" in errors[0]

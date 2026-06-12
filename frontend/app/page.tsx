@@ -4,6 +4,7 @@ import { api, type JournalEntry, type Position } from "@/lib/api";
 import PortfolioTable, { PortfolioTableSkeleton } from "@/components/PortfolioTable";
 import JournalList from "@/components/JournalList";
 import AddPositionModal from "@/components/AddPositionModal";
+import AiMetrics from "@/components/AiMetrics";
 
 type LoadState = "loading" | "ready" | "error";
 
@@ -30,6 +31,23 @@ export default function Dashboard() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // 轮询机制：如果有日记提交了 reason 但还没有 motivation_type（说明后台正在 AI 审计），则每 3 秒刷新一次数据
+  useEffect(() => {
+    const hasPendingAudit = journal.some((entry) => entry.reason && !entry.motivation_type);
+    if (!hasPendingAudit) return;
+
+    const intervalId = setInterval(async () => {
+      try {
+        const jour = await api.journal.list();
+        setJournal(jour);
+      } catch (e) {
+        console.error("Polling journal failed", e);
+      }
+    }, 3000);
+
+    return () => clearInterval(intervalId);
+  }, [journal]);
 
   async function handleRefreshPrices() {
     setRefreshing(true);
@@ -98,6 +116,10 @@ export default function Dashboard() {
         <p className="text-sm text-gray-500 -mt-4">{refreshMsg}</p>
       )}
 
+      {loadState === "ready" && (
+        <AiMetrics entries={journal} />
+      )}
+
       {/* 持仓表格 */}
       <section>
         <h2 className="text-base font-semibold text-gray-700 mb-3">持仓</h2>
@@ -141,6 +163,7 @@ export default function Dashboard() {
           entries={filteredJournal}
           filterSymbol={filterSymbol}
           onFilterChange={setFilterSymbol}
+          onRefresh={load}
         />
       </section>
 

@@ -1,363 +1,241 @@
-<!-- /autoplan restore point: /Users/michael/.gstack/projects/make-money/main-autoplan-restore-20260608-234228.md -->
-# v1a 实施计划：持仓仪表板 + 决策日记
+<!-- /autoplan restore point: /Users/michael/.gstack/projects/make-money/feature-v1b-ai-fund-autoplan-restore-20260612-210450.md -->
+# Make Money - 下阶段开发计划 (v2.0)
 
-基于 /office-hours 设计文档（2026-05-31），v1a 是最小可用版本。
-目标：1-2 个周末完成，证明核心工作流可运行。
+在完成了 v1b 的 AI 决策审计、混合资产价格拉取（BaoStock + 天天基金）以及完善了系统的健壮性之后，系统已经具备了核心的“记录 -> AI 反馈 -> 资产统计”的闭环。
 
-## 问题背景
+针对下一步的开发，我们有以下几个重点方向可以探索：
 
-前端工程师持有 A 股和基金持仓，现有工具的核心缺口：
-1. 没有连接个人账户的工具——AI 推荐不知道你持有什么
-2. 没有决策反馈闭环——买了什么、为什么买、结果如何从未串联
+## 选项 A: 深度复盘图表分析 (推荐)
+目前的日记列表只能通过文字和标签查看过去的决策，缺乏全局视角。
+- **盈亏日历/时间线图表**：直观展示不同日期的总盈亏变化。
+- **心理偏误雷达图**：根据 AI 打上的标签（如“追涨杀跌”、“恐慌”、“理性分析”），绘制出属于你个人的交易性格雷达图或饼图，帮助你了解最容易犯的错误类型。
+- **个股/基金专属复盘**：点击某个资产，显示你在它身上的“买卖点标记图”（类似同花顺的 B/S 标记）以及它给你带来的总盈亏。
 
-v1a 解决第一个问题：让用户在一个地方看到自己的持仓和盈亏，并记录每笔操作的原因。
+## 选项 B: 用户账户与权限系统
+目前系统是单机版，所有人访问 localhost 看到的数据都是一样的。
+- **注册/登录功能**：基于 JWT 和 Bcrypt 加密的独立账号系统。
+- **多租户数据隔离**：修改 `Position` 和 `JournalEntry` 表，加入 `user_id`，让你可以在云服务器上部署给朋友们一起使用。
 
-## v1a 范围（严格限定）
+## 选项 C: 自动化预警与数据导出
+- **止盈止损预警**：在添加持仓时设定目标价/止损价，利用定时任务（BackgroundTasks/Celery）拉取价格并发送邮件或系统内提醒。
+- **月度复盘导出**：将过去一个月的决策日记和 AI 评语一键导出为精美的长图或 Excel 文件，方便存档。
 
-### 包含
-1. **持仓仪表板**
-   - 手动录入持仓（代码、名称、股数、均价、资产类型）
-   - 通过 baostock API 每日批量拉取收盘价（已验证可用）
-   - 展示：当前价、盈亏金额、盈亏百分比、总成本、总市值
-   - 数据标注日期（"收盘价，非实时，数据日期：YYYY-MM-DD"）
+---
 
-2. **决策日记**
-   - 每次买入/卖出时录入：日期、代码、方向（买/卖）、数量、价格、原因（自由文本）
-   - 卖出时自动计算 P&L = (卖出价 - 均价) × 数量
-   - 使用加权平均成本法更新均价
-   - 日记按时间倒序展示，支持按代码过滤
+**当前架构健康度评估 (Auto-Review):**
+- **✅ 类型安全**: 后端全面使用 Pydantic 和 SQLAlchemy 2.0，前端已补充完整 API 类型。
+- **✅ 容错性**: 爬虫和 AI 服务都加入了超时和异常捕获，`httpx.ReadTimeout` 已经修复，UI 轮询也已实装。
+- **⚠️ 测试覆盖率**: 需要随着新功能的加入继续补充 `pytest` 案例。
 
-### 不包含（v1b/v2）
-- AI 持仓简报（每日分析）
-- 候选股票推荐
-- 周度 AI 复盘
-- 港股、美股支持
-- 定时任务/推送
-- K 线图
-- 用户账号系统（v1 单用户本地运行）
+---
+<!-- AUTONOMOUS DECISION LOG -->
+## 🔍 /autoplan 审查报告 — CEO 战略审查 (Phase 1)
 
-## 技术栈
+> 审查模式：**SELECTIVE EXPANSION（选择性扩展）**
+> 双 voice 状态：**单审查员模式** — 本机未安装 Codex CLI，本次仅由 Claude 主审，**无第二模型独立 voice**。
+> 时间：2026-06-12 ｜ 分支：`feature/v1b-ai-fund` ｜ commit `1a3d5de`
 
-| 层级 | 选型 | 说明 |
-|------|------|------|
-| 前端 | Next.js 14 (TypeScript, App Router) | 开发者熟悉前端，App Router 是现代标准 |
-| 后端 | FastAPI (Python 3.11+) | baostock 是 Python 库，数据处理自然 |
-| 数据库 | MySQL (SQLAlchemy + pymysql) | 用户提供现成数据库，直接对接 |
-| 行情数据 | baostock | 免费、稳定、无 TLS 指纹问题（已验证） |
-| 包管理 | uv (Python) + pnpm (Node) | 速度快 |
+### 0A · 前提挑战 (Premise Challenge)
 
-**数据库连接**：通过环境变量 `DATABASE_URL` 注入，格式：
-```
-DATABASE_URL=mysql+pymysql://用户名:密码@host:3306/数据库名
-```
-需额外安装：`uv add pymysql`
+| 前提 | 计划的假设 | 审查判定 |
+|---|---|---|
+| P1 | “v1b 已完成” | ❌ **不成立**。v1b 是 **889 行未提交**的工作区改动；`gemini.py`、`AiMetrics.tsx`、`list_models.py` 甚至未 `git add`。没有提交、没有 PR、没有合并。 |
+| P2 | “现在应挑选 v2.0 大方向” | ⚠️ **为时过早**。P1 未成立时，最高杠杆的下一步是**先把 v1b 落地**。 |
+| P3 | “选项 A（复盘图表）是新增能力” | ❌ **大部分已建成**。`AiMetrics.tsx` 已渲染累计盈亏时间线、心理偏误雷达、偏误盈亏柱状图——正是 A 的两个头牌功能。`recharts` 已是依赖。A 真正新增的只有“个股 B/S 标记图”。 |
+| P4 | “A/B/C 是正确的候选集” | ⚠️ **不完整**。`TODOS.md` 已把 v2.0 定义为 T10–T13，其中**最高优先级 T11（券商交割单自动导入，P1）被排除在菜单外**；而选项 C（预警/导出）不在 TODOS 中。菜单与既有路线图未对齐。 |
 
-## 数据库 Schema（MySQL）
+### 0B · 复用地图 (What Already Exists)
 
-工程审查修正（ENG-2, ENG-4, ENG-11）：
+| 子问题 | 既有实现 | 状态 |
+|---|---|---|
+| 盈亏时间线图 | `AiMetrics.tsx` 累计已实现盈亏趋势 AreaChart | ✅ 已建 |
+| 心理偏误雷达/分布 | `AiMetrics.tsx` 性格雷达 + 偏误盈亏榜 | ✅ 已建 |
+| 交易健康分 | `AiMetrics.tsx` healthScore（计划之外的额外能力） | ✅ 已建 |
+| 图表库 | `recharts ^3.8.1` 已在 `package.json` | ✅ 已有 |
+| AI 动机标签数据 | `journal_entries.motivation_type` + `ai_audit`，`gemini.py` | ✅ 已建 |
+| 混合资产净值 | `baostock_service.py` + 天天基金路由，`prices.py` | ✅ 已建 |
+| 日记搜索/筛选 | `JournalList.tsx`（v1b T9） | ✅ 已建 |
+| 个股 B/S 标记数据 | `journal_entries` 已含 symbol/action/price/trade_date/pnl | ⚠️ 数据齐备，**仅缺按标的的图表视图** |
 
-```sql
--- 持仓表（当前持仓状态）
-CREATE TABLE positions (
-  id INT PRIMARY KEY AUTO_INCREMENT,
-  symbol VARCHAR(10) NOT NULL UNIQUE,       -- ENG-2: 禁止同一代码两行
-  name VARCHAR(50) NOT NULL,
-  asset_type ENUM('stock', 'etf', 'fund') NOT NULL,
-  shares DECIMAL(12,2) NOT NULL DEFAULT 0 CHECK(shares >= 0),  -- ENG-4: 禁止负持仓
-  avg_cost DECIMAL(12,4) NOT NULL,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+### ⚠️ v1b 落地前需修正的漂移 (Spec/Code Drift)
 
--- 决策日记（每笔买卖）
-CREATE TABLE journal_entries (
-  id INT PRIMARY KEY AUTO_INCREMENT,
-  symbol VARCHAR(10) NOT NULL,
-  action ENUM('buy', 'sell') NOT NULL,
-  shares DECIMAL(12,2) NOT NULL,
-  price DECIMAL(12,4) NOT NULL,
-  reason TEXT,
-  pnl DECIMAL(12,2),          -- 仅 sell 时：(price - avg_cost_at_time) × shares
-  avg_cost_at_time DECIMAL(12,4),  -- sell 时记录当时均价
-  trade_date DATE NOT NULL,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_journal_symbol (symbol)   -- ENG-11
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+- **字段命名**：规格写 `motivation_analysis`，实际代码（`models.py`/`schemas.py`/`journal.py`）用 `ai_audit`。代码内部一致，**规格文档已过期**。
+- **模型版本**：规格写 `gemini-1.5-flash`，代码用 `gemini-2.5-flash`。
+- **枚举**：规格 `['跟风','恐慌','盲目冲动','理性分析','其它']`，代码 `['追涨杀跌','贪婪','恐慌','理性分析','其它']`（前后端一致）。
+- 建议落地前用一次提交把规格同步到实现，避免后人误读。
 
--- 每日价格快照（baostock 批量写入，前端只读此表）
-CREATE TABLE daily_snapshots (
-  id INT PRIMARY KEY AUTO_INCREMENT,
-  symbol VARCHAR(10) NOT NULL,
-  date DATE NOT NULL,
-  close_price DECIMAL(12,4) NOT NULL,
-  fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_symbol_date (symbol, date)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-```
+### 0C · 校正后的方向对比 (Corrected Options)
 
-## 系统架构
+> “选项 A”大部分已完成，不再是一个独立方向。先落地 v1b，再在以下真实分叉中取舍：
 
-```
-用户浏览器 (Next.js)
-    ↓ HTTP (localhost:3000 → :8000)
-FastAPI 后端
-    ├── GET  /positions          — 持仓列表 + 最新价格
-    ├── POST /positions          — 新增持仓
-    ├── POST /journal            — 记录买卖（触发均价更新）
-    ├── GET  /journal            — 日记列表（支持 ?symbol=xxx 过滤）
-    └── POST /prices/refresh     — 触发 baostock 批量拉取
-SQLite (make_money.db)
-baostock (外部数据，按需调用)
-```
+| 方向 | 真正的净新增工作 | CC 估时 | 价值 | 风险 |
+|---|---|---|---|---|
+| **① 先落地 v1b（建议首做）** | 修正规格漂移、跑 pytest、提交、开 PR | ~20–40min | 解锁一切；为 889 行未发布代码去风险 | 低 |
+| A′ 复盘图表（精简） | 仅个股 B/S 标记图（+可选 T12 资产漏斗 / T13 总资产曲线） | ~1–2h | 中（锦上添花） | 低 |
+| B 账户/多租户 (T10) | JWT+Bcrypt、三表加 `user_id`、每条查询按 user 隔离、前端登录 | ~半天 | 高（若目标是“给朋友用/上云”） | 中（迁移 + 每条查询都必须过滤 `user_id`，安全关键） |
+| C 预警+导出 | 目标/止损价字段、定时拉价、通知渠道、导出 | ~半天 | 中高（主动提醒） | 中（BackgroundTasks 不足以做周期任务，需 APScheduler/cron；邮件投递） |
+| **T11 券商交割单导入（被漏掉，P1）** | 解析券商 CSV → `journal_entries` + 初始化持仓 | ~半天 | **高**（消除最大摩擦：手工录入；让工具能跑真实历史） | 中（各券商格式长尾） |
 
-## UI 规范
+### 推荐路径 (Recommendation)
 
-**A 股颜色 Token（必须锁定）：**
-```css
---color-gain: #E03A3A;   /* 红色 = 涨 */
---color-loss: #1DB954;   /* 绿色 = 跌 */
---color-neutral: #8B8B8B;
-```
+1. **立刻：先落地 v1b**（修正规格漂移 → pytest → 提交 → PR）。889 行已能工作、带测试的代码停在工作区，先发布它的价值高于规划 v2.0。
+2. **顺手：把“个股 B/S 标记图”当作一个小任务并入**，而非一个大方向——A 的其余部分已在 `AiMetrics.tsx` 里。
+3. **v2.0 真正的取舍取决于你的目标**：想用真实交易历史 → **T11 导入**（ROI 最高）；想给朋友用/上云 → **B 账户**；想被动盯盘 → **C 预警**。
 
-**主仪表板布局（单页滚动）：**
-1. 顶部横幅：总成本 / 总市值 / 总盈亏（金额 + 百分比）
-2. 持仓表格：代码、名称、持仓量、均价、现价、盈亏金额、盈亏%、[记录交易] 按钮
-3. 决策日记（同页下方）：时间倒序，每行显示操作摘要 + 原因
+> 这一步是 autoplan 的**前提确认门**——需要你拍板，下面的工程/设计深审将基于你选择的路径展开。
 
-**5 种交互状态：**
+<!-- Decision Audit Trail -->
+### 决策审计 (Decision Audit Trail)
 
-| 状态 | 展示 |
-|------|------|
-| Loading | 骨架屏，最长等待 15 秒 |
-| 无持仓 | 提示文字 + "添加第一笔持仓" 按钮 |
-| 部分失败 | 失败行显示 "--" + 提示，其余正常 |
-| 数据过期 | 价格旁显示灰色日期 |
-| 提交中 | 表单按钮 disabled + loading 指示器 |
+| # | 阶段 | 决策 | 分类 | 原则 | 理由 |
+|---|---|---|---|---|---|
+| 1 | CEO | 审查模式 = SELECTIVE EXPANSION | Mechanical | P1 | 计划漏项（T11）且高估 A，需校正而非重写 |
+| 2 | CEO | 挑战“v1b 已完成”前提 | 前提门 | P6 | 889 行未提交，落地优先 |
+| 3 | CEO | 判定 Option A 大部分已建成 | Mechanical | P4 (DRY) | `AiMetrics.tsx` 已渲染时间线+雷达+柱状 |
+| 4 | CEO | 把 T11 重新纳入候选 | Taste | P1/P2 | TODOS 中 P1 项被菜单遗漏，价值高 |
+| 5 | CEO | 推荐“先落地 v1b” | 前提门→用户 | P6 | bias toward action：先发布在制品 |
 
-## 项目目录结构
+> **v1b 落地状态：✅ 已完成** — 代码 commit `7e8caaf` + 整理 commit `7e73ff3`，已推送并开 PR #2（22/22 测试通过，规格已同步实现）。
+
+---
+## 🔧 /autoplan 审查报告 — T11 工程/设计深审 (Phase 3 Eng + Phase 2 Design)
+
+> 方向：**T11 券商交割单自动导入**（你的 D2 选择）。模式 SELECTIVE EXPANSION，单审查员（Claude，无 Codex 第二 voice）。
+> 性质：本节是**实现计划 + 审查**，尚未编码；建议 v1b（PR #2）合并后另开分支 `feature/v2-broker-import` 实施。
+
+### Phase 3 · 工程审查 (Eng)
+
+#### 架构总览
 
 ```
-make-money/
-├── backend/
-│   ├── main.py              # FastAPI 入口
-│   ├── models.py            # SQLAlchemy 模型
-│   ├── schemas.py           # Pydantic 请求/响应模型
-│   ├── database.py          # DB 连接与会话
-│   ├── routers/
-│   │   ├── positions.py     # 持仓 CRUD
-│   │   ├── journal.py       # 决策日记 CRUD
-│   │   └── prices.py        # 行情刷新
-│   ├── services/
-│   │   └── baostock_service.py  # baostock 封装
-│   └── make_money.db        # SQLite 数据库文件
-├── frontend/
-│   ├── app/
-│   │   ├── page.tsx         # 主仪表板
-│   │   ├── layout.tsx
-│   │   └── api/             # Next.js API Routes（可选代理）
-│   ├── components/
-│   │   ├── PortfolioTable.tsx
-│   │   ├── JournalList.tsx
-│   │   ├── AddPositionModal.tsx
-│   │   └── RecordTradeModal.tsx
-│   └── lib/
-│       └── api.ts           # 后端 API 客户端
-├── fetch_prices.py          # 已验证脚本（数据层概念验证）
-├── PLAN.md                  # 本文件
-└── CLAUDE.md
+[券商交割单 CSV (GBK)]
+      │ 上传 (multipart)
+      ▼
+[POST /import/preview] ──▶ [broker_import 解析层]
+      │                       ├── base_parser (列映射协议)
+      │                       ├── adapters/ (同花顺 / 东方财富 / 通用映射)
+      │                       └── 产出: ParsedTrade[] + 问题清单(不可解析/疑似重复)
+      │ (只读, 不写库)
+      ▼
+[前端预览表] ──用户确认──▶ [POST /import/commit]
+                                  │ 按 (trade_date, 行序) 稳定排序
+                                  ▼
+                          [trade_engine.apply_trade()] ◀── 复用 (record_trade 也调用它)
+                                  ├── 建/改 Position（含首买建仓）
+                                  ├── 加权均价 / 超卖保护 / 平仓 pnl / 清仓删除
+                                  └── 写 JournalEntry(external_id 去重)
+                                  ▼
+                          [导入结果摘要: 成功 N / 跳过重复 M / 失败 K]
 ```
 
-## P&L 计算逻辑
+#### 0 · 复用地图与关键重构（DRY — 最重要的一条）
 
-使用加权平均成本法（FIFO 不适合 A 股散户实际操作习惯）：
+当前 `routers/journal.py:record_trade` 把「加权均价 / 超卖保护 / 平仓盈亏 / 清仓删除」**内联**写在 HTTP 处理函数里，且**强制要求持仓已存在**（`pos is None → 404`，line 26-27）。导入要逐笔回放这套逻辑，**绝不能复制一份**。
 
-- **买入**：`new_avg_cost = (old_shares × old_avg_cost + new_shares × price) / (old_shares + new_shares)`
-- **卖出**：P&L = (price - avg_cost) × shares；剩余持仓 avg_cost 不变
-- **清仓**：shares 归零，记录保留；下次买入视为新持仓（avg_cost 重置）
-
-## 实施顺序（最小风险路径）
-
-### Day 1（周六）：后端可运行
-1. `uv init backend && uv add fastapi uvicorn sqlalchemy pymysql baostock`
-2. 实现 database.py + models.py
-3. 实现 `/positions` CRUD（含买入触发均价计算）
-4. 实现 `/prices/refresh` 调用 baostock
-5. 用 curl 验证全流程
-
-### Day 2（周日）：前端可运行
-1. `pnpm create next-app frontend`
-2. 实现 PortfolioTable（展示持仓 + 价格 + 盈亏）
-3. 实现 AddPositionModal（新增持仓）
-4. 实现 RecordTradeModal（记录买卖）
-5. 实现 JournalList（日记展示）
-6. 端到端测试：录入持仓 → 刷新价格 → 记录卖出 → 查看 P&L
-
-## 工程实现要求（/autoplan 审查产出）
-
-以下为工程审查确认的必须实现细节：
-
-### 事务安全（ENG-1 Critical）
-POST /journal 必须用 SQLAlchemy 事务同时写 journal_entries + 更新 positions：
+**重构（T11 的地基）**：抽取核心为纯服务函数
 ```python
-with db.begin():
-    db.add(journal_entry)
-    db.query(Position).filter_by(symbol=...).update({...})
+# services/trade_engine.py
+def apply_trade(db, *, symbol, name, asset_type, action, shares, price,
+                trade_date, reason=None, external_id=None,
+                create_position_if_missing=False, fee=Decimal(0)) -> JournalEntry:
+    # 返回写入的 JournalEntry；不抛 HTTPException，改抛领域异常 TradeError
 ```
+- `record_trade` 改为：调 `apply_trade(create_position_if_missing=False)` → 捕获 `TradeError` 转 HTTPException → 仍触发 AI 审计（行为不变）。
+- 导入器：逐笔调 `apply_trade(create_position_if_missing=True)`，**不**触发 AI 审计。
+- 收益：单一可信记账核心，两入口共享；现有 22 条测试继续护航。
 
-### 超卖保护（ENG-5 High）
-POST /journal action=sell 时，service 层在写 DB 前校验：
-```python
-if position.shares < sell_shares:
-    raise HTTPException(422, "卖出数量超过持仓")
-```
+#### 1 · 数据模型变更
 
-### baostock session 生命周期（ENG-6 High）
-每次 POST /prices/refresh 调用时：
-```python
-bs.login()
-try:
-    # 查询所有持仓
-finally:
-    bs.logout()
-```
-不持久化 session，不并发调用。
+| 变更 | 原因 |
+|---|---|
+| `journal_entries.external_id VARCHAR(64) NULL` + 唯一索引（仅非空生效） | **幂等去重**：以券商「成交编号」为键，重复导入同一对账单不重复计数 |
+| `journal_entries.fee NUMERIC NULL` ✅ | 交割单含手续费/印花税；**计入成本**：买入并入 `avg_cost`、卖出从 `pnl` 净扣（手工录入保持 `fee=0`）|
+| 首买建仓需 `name`/`asset_type` | `positions.symbol` 唯一且当前 `record_trade` 不建仓；交割单未必含名称/类型，需推断或预览补全 |
 
-### GET /positions 返回 is_stale 字段（ENG-3 High）
-响应中包含 `price_date` 和 `is_stale: bool`（最近快照日期距今 > 1 个交易日则 true）。
+> **排序隐患**：模型仅有 `trade_date`(date) 无日内时序。同日多笔成交的均价回放顺序依赖行序。MVP：解析保留行序，按 (trade_date, 行序) 稳定排序回放；必要时加 `trade_seq`。
 
-### float 转换（ENG-7 Medium）
-baostock 返回字符串，服务层必须 `float(rs.get_row_data()[1])`。
+#### 2 · 解析层
 
-### 周末重复快照（ENG-8 Medium）
-捕获 UNIQUE(symbol, date) 冲突视为成功返回（not error）。
+- **编码**：国内券商导出多为 **GBK/GB2312**，必须显式解码（先 utf-8-sig 再回退 gbk），否则中文列名乱码。
+- **格式差异**：各券商列名/动作词不同。MVP 范围：1 个具体适配器（取你实际用的券商）+ 1 个**通用列映射**（预览时把 CSV 列对到 {日期,代码,名称,方向,数量,价格,成交编号,费用}）。
+- **动作映射**：买入类→buy，卖出类→sell；**非买卖行（分红/送股/银证转账/利息）MVP 跳过并在预览标注**，不静默吞掉。
 
-## 开放问题
+#### 3 · 接口（两步：预览 → 确认）
 
-1. **价格刷新触发**：v1 手动点击"刷新价格"按钮，不做定时任务
-2. **baostock 非交易日**：baostock 返回最近交易日数据，直接展示即可，标注日期
-3. **跨域**：FastAPI 需启用 CORS（localhost:3000 → :8000）（自动决策 #2）
-4. **SQLite 并发**：单用户本地运行，无并发问题
+- `POST /import/preview`（文件 + 可选 broker/列映射）→ 只读解析，返回 `{rows, issues, dup_count, parsable_count}`，**不写库**。
+- `POST /import/commit`（已确认 rows）→ **单事务**批量回放 `apply_trade`，按 external_id 去重，返回 `{imported, skipped_dup, failed:[{row,reason}]}`。
 
-## 成功标准
+#### 失败模式登记表 (Failure Modes Registry)
 
-- 能录入 3 只持仓，看到盈亏数字
-- 能记录一笔卖出，看到 P&L 自动计算
-- 每天打开这个工具 > 每天打开证券 App
+| ID | 场景 | 不处理的后果 | MVP 对策 |
+|---|---|---|---|
+| F1 | GBK 编码未处理 | 中文乱码，解析全错 | 显式 gbk 回退解码 |
+| F2 | 重复导入同一对账单 | 持仓与盈亏翻倍 | `external_id` 唯一去重 + 预览标重复 |
+| F3 | 同日多笔乱序回放 | 加权均价算错 | 按 (trade_date, 行序) 稳定排序 |
+| F4 | 手续费/印花税未计 | 成本/盈亏与券商对不上 | ✅ **计入成本**：买入并入 `avg_cost`、卖出净扣 `pnl`，新增 `fee` 列；手工录入暂保持 `fee=0`（已标注不一致）|
+| F5 | 首买无持仓 | 现有 `record_trade` 直接 404 | `apply_trade` 支持建仓 |
+| F6 | 非买卖行（分红/送股） | 解析报错或错记为买卖 | 识别跳过 + 预览标注（公司行为不在 MVP）|
+| F7 | 批量触发 AI 审计 | 数百次 Gemini 调用，配额/费用爆炸 | 导入不触发审计 |
+| F8 | 半途失败 | 脏均价/部分持仓 | 整批单事务回滚 |
+| F9 | 代码类型推断错 | 行情路由错（天天基金 vs BaoStock）| 预览让用户确认 asset_type |
 
-## 🛠️ GSTACK REVIEW REPORT (自动生成于 2026-06-08)
+#### 测试图谱 (Test Diagram → 覆盖)
 
-### 📊 审查汇总状态
+| 代码路径/流程 | 测试类型 | 新增? |
+|---|---|---|
+| 买入加权均价 / 卖出 pnl / 超卖 / 清仓删除 | 单元 | 复用现有 |
+| `apply_trade` 首买建仓 | 单元 | 新增 |
+| GBK 解析 + 列映射 | 单元（GBK 字节样例） | 新增 |
+| `external_id` 去重（重复导入） | 集成 | 新增 |
+| 同日乱序排序正确性 | 单元 | 新增 |
+| 非买卖行跳过 | 单元 | 新增 |
+| `/import/preview` 只读不写库 | 集成 | 新增 |
+| `/import/commit` 单事务回滚 | 集成 | 新增 |
+| 混合：手工持仓 + 导入去重不冲突 | 集成 | 新增 |
 
-| 审查维度 | 运行状态 | 发现项 | 结论 |
-|----------|----------|--------|------|
-| **Phase 1: CEO 战略审查** | 已运行 (PLAN via /autoplan) | 4 提案 (2 采纳, 2 延期) | **PASS** |
-| **Phase 2: Design UI/UX 审查** | 已运行 (PLAN via /autoplan) | 1 细节改进 | **PASS** |
-| **Phase 3: Eng 架构/质量审查** | 已运行 (PLAN via /autoplan) | 2 个缺陷/风险点 | **PASS** |
-| **Phase 3.5: DX 开发者体验审查**| 已运行 (PLAN via /autoplan) | 0 发现项 | **PASS** |
+### Phase 2 · 设计审查 (Design)
 
-**最终结论：VERDICT: CLEARED (PLAN via /autoplan)**
-所有审查阶段均已通过，核心任务已自动归档至下方任务清单。
+UI 范围：是（导入弹窗 + 预览表）｜ 开发者体验范围：否（个人工具）。
 
----
+#### 导入旅程与关键状态
 
-### 🎨 Phase 2: Design UI/UX 审查结果
+上传 → 解析中 → **预览(核心)** → 确认 → 完成；异常：解析失败 / 编码错 / 全部重复。
 
-#### 1. 信息层级与交互状态评估
-- **加载状态 (Loading)**：当用户点击“刷新价格”时，数据拉取受限于外部 baostock API 速度（平均耗时 2-5 秒）。前端目前仅有大体骨架屏，容易造成“按钮无反应”的错觉。已在下方 T3 归档优化任务。
-- **数据过期 (Stale)**：如果数据超过 1 天，页面现价旁正确显示灰色日期字样，防止用户误信旧数据，体验良好。
-- **红涨绿跌 Token**：已完美锁定中国 A 股的配色 Token（`--color-gain: #E03A3A` / `--color-loss: #1DB954`）。
+| 状态 | 设计要点（复用 v1a/v1b 已有骨架屏与兜底风格）|
+|---|---|
+| 上传 | 拖拽/选择 CSV + 券商格式下拉（含“通用映射”）|
+| 解析中 | loading（复用刷新置灰/遮罩）|
+| **预览** | 表格：日期/代码/名称/方向/数量/价格/费用/状态；**重复行**灰显标“已存在”，**异常行**红标可展开原因；顶部统计「可导入 N / 重复 M / 异常 K」；通用映射模式顶部一排列映射下拉 |
+| 确认 | 「导入 N 笔」主按钮 + 二次确认（写库不可一键撤销）|
+| 完成 | 摘要卡：成功/跳过/失败，失败行可展开；引导去仪表盘 |
+| 错误 | 编码错/空文件/列缺失 → problem + cause + fix 文案 |
 
-#### 2. Design Litmus Scorecard
+> **信息层级**：预览页第一眼是「可导入多少 / 有多少异常」，其次逐行核对，最后才是确认——让用户**先信任解析结果再落库**。
 
-| 维度 | 评分 (0-10) | 现状与反馈 |
-|------|-------------|------------|
-| 1. 信息层级清晰度 | 9/10 | 仪表盘三段式布局清晰，盈亏全宽展示，易于聚焦 |
-| 2. 异常与边界状态支持 | 8/10 | 提供部分行失败与 stale 数据显示支持 |
-| 3. 用户旅程连贯性 | 9/10 | 持仓行直达“记录决策”弹窗，符合高频心流交互 |
-| 4. 响应式与体验度 | 8/10 | 大屏幕表现优秀，移动端双栏滚动表现合理 |
-| **整体得分** | **8.5/10** | **通过 (PASS)** |
+### 单审查员共识表（无第二模型 voice）
 
----
+| 维度 | Claude 判定 | 说明 |
+|---|---|---|
+| 架构是否合理 | ✅ | 命门是抽取 `apply_trade` 复用记账核心 |
+| 测试是否充分 | ⚠️→✅ | 需补解析/去重/排序/事务回滚用例（已列） |
+| 性能风险 | ✅ | 批量单事务；唯一风险=导入触发 AI 审计→已禁用 |
+| 安全/数据完整 | ⚠️ | `external_id` 去重 + 原子性是数据正确性命门，必须先做 |
+| 错误路径 | ✅ | 失败模式表覆盖编码/重复/乱序/公司行为/半途 |
+| 交付风险 | ✅(可控) | MVP 限 1 适配器+通用映射，公司行为/多账户显式 defer |
 
-### 🏗️ Phase 3: Eng 架构与质量审查结果
+### MVP 范围 vs 明确推迟 (NOT in scope)
 
-#### 1. 架构拓扑 (Architecture Topology)
-```
-[Next.js Frontend (localhost:3000)]
-       │ (CORS Enabled)
-       ▼ [HTTP JSON]
-[FastAPI Backend (localhost:8000)]
-       ├── [SQLAlchemy ORM] ──▶ [MySQL Database (make_money)]
-       └── [baostock_service] ──▶ [baostock API (External)]
-```
-- **解耦设计**：主 API `list_positions` 仅从 `daily_snapshots` 数据库表中拉取价格，不实时阻塞 baostock 查询，极大地提高了页面访问速度和防爆破保护。
-- **并发与事务**：在 `journal.py` 中使用 `begin_nested()` 进行 Savepoint 包裹，有效保证了 `journal_entries` 写入与 `positions` 更新的原子性。
+- **MVP**：`apply_trade` 重构 + `external_id` 去重 + **同花顺适配器** + 通用列映射 + `fee` 计入成本 + 预览/确认两步 + 上述测试。
+- **推迟（写入 TODOS）**：公司行为（分红/送股/拆合股）自动入账、多券商×多账户合并、费用精确税费明细、PDF/图片 OCR 对账单、增量自动同步。
 
-#### 2. 核心公式与异常路径审查 (Error & Rescue Map)
+#### 决策审计追加 (Decision Audit Trail — T11)
 
-- **潜在除零隐患 (GAP)**：
-  在 `journal.py` 中，计算新买入均价时：
-  `new_avg = (old_shares * old_avg + buy_shares * buy_price) / new_shares`
-  在极端异常状况下（例如前端由于参数解析错误发送负值或零值），如果 `new_shares` 计算结果为 0，会导致 Python 进程抛出 `ZeroDivisionError` 导致 500 崩溃。已在下方 T1 归档保护任务。
-
-| 方法/代码路径 | 异常触发点 | 异常类型 | 补救动作 | 用户感知 |
-|--------------|------------|---------|----------|----------|
-| `routers/journal.py` | 累计持仓量为 0 | `ZeroDivisionError` | 增加非零断言 (T1) | 422 参数错误 |
-| `services/baostock.py`| baostock 离线 | `NetworkError` | 记录日志，使用最后快照 (T2) | 提示“数据过期”并展示旧价 |
-
-#### 3. 失败模式注册表 (Failure Modes Registry)
-
-| 场景 | 失败模式 | 是否处理 | 测试覆盖 | 用户表现 | 记录情况 |
-|------|----------|----------|----------|----------|----------|
-| 行情 API 挂死 | 接口连接超时 (15s) | 是 | 否 | 显示最后快照价格 + Stale日期 | 错误日志输出 |
-| 重复刷新快照 | 同一 symbol 写入重复 snapshot | 是 (Ignore) | 否 | 忽略静默成功，不报错 (ENG-8) | 无 |
-| 账户超卖交易 | 卖出股数超过持仓数 | 是 (Raise) | 否 (GAP) | 弹窗阻拦：“卖出数量超过持仓” | HTTP 422 响应 |
-
-*GAP 说明*：当前超卖逻辑与平均成本公式缺乏自动化单元测试保障，需建立测试管道（T2）。
-
----
-
-### 🚀 Phase 3.5: DX 开发者体验审查结果
-
-- **得分：9/10**。
-- **环境搭建**：采用 `uv` + `pnpm`，比传统的 pipenv/npm 启动提速 5-10 倍。
-- **接口自解释性**：FastAPI 提供自带的 `/docs` (Swagger) 页面，Pydantic 验证模型和类型定义清晰，前段调用无认知摩擦。
-
----
-
-### 📦 审查强制归档输出 (CEO Section Additions)
-
-#### 1. 延期列表 (NOT in scope)
-- **AI 个股简报**：由于 v1a 周期极短，且 AKShare 新闻的获取与 Prompt 截断工程量较大，移至 v1b 开发。
-- **周度 AI 复盘总结**：需要在用户积累 20 条以上真实交易日记后方显价值，移至 v1b。
-- **多市场行情**：美股和港股交易规则及印花税不同，v1a 仅专注于 A 股及公募基金。
-
-#### 2. 代码复用图 (What already exists)
-- 复用了 `fetch_prices.py` 中的 K 线收盘价获取机制，通过 `services/baostock_service.py` 进行包装。
-- 完整集成了 Next.js 与 FastAPI 单机双端开发模式，CORS 中间件在 `main.py` 中已正确预置。
-
-#### 3. 12个月愿景差 (Dream State Delta)
-- **当前状态**：无日记，盈亏无法追溯，AI 无法给出个性化交易反馈。
-- **本方案达成状态**：本地手工持仓仪表盘落地，拥有完全匹配交易的加权平均成本自动更新和 P&L 结算，记录了每次买入/卖出的动机。
-- **12个月理想状态**：自动同步券商交易，AI 能够通过历史日记自动绘出你的认知偏误图谱并主动进行行为问责。
-
----
-
-### 📝 实施任务清单 (Implementation Tasks)
-
-- [x] **T1 (P1, human: ~30min / CC: ~5min)** — `backend` — 增加买入均价计算除零保护
-  - Surfaced by: Eng Review — `journal.py` 除零 GAP 拦截
-  - Files: [journal.py](file:///Users/michael/Documents/projects/make-money/backend/routers/journal.py#L46-L53)
-  - Verify: 输入 `new_shares = 0` 时抛出 422 异常
-- [x] **T2 (P2, human: ~1h / CC: ~10min)** — `backend` — 为加权平均成本与超卖逻辑编写单元测试
-  - Surfaced by: Eng Review — 缺乏核心交易逻辑的覆盖测试
-  - Files: [test_journal.py](file:///Users/michael/Documents/projects/make-money/backend/tests/test_journal.py) (New)
-  - Verify: `pytest` 运行通过
-- [x] **T3 (P2, human: ~30min / CC: ~5min)** — `frontend` — 价格刷新期间增加按钮禁用与加载骨架屏过渡状态
-  - Surfaced by: Design Review — Loading 状态未完全覆盖
-  - Files: [page.tsx](file:///Users/michael/Documents/projects/make-money/frontend/app/page.tsx#L88-L95)
-  - Verify: 手动点击刷新，可见按钮置灰及 Skeleton 加载中效果
-- [x] **T4 (P1, human: ~30min / CC: ~5min)** — `backend` — 优化 positions 的 K线最新价查询减少 SQL N+1
-  - Surfaced by: Eng Review — SQL 查询性能隐患
-  - Files: [positions.py](file:///Users/michael/Documents/projects/make-money/backend/routers/positions.py#L29-L38)
-  - Verify: 一切性 IN 查询或连接查询，查日志确认 SQL 耗时
+| # | 阶段 | 决策 | 分类 | 原则 | 理由 |
+|---|---|---|---|---|---|
+| 6 | Eng | 抽取 `apply_trade` 复用记账核心 | Mechanical | P4 DRY | 避免导入复制 `record_trade` |
+| 7 | Eng | 加 `external_id` 唯一去重 | Mechanical | P1 | 幂等导入，防翻倍 |
+| 8 | Eng | 导入不触发 AI 审计 | Mechanical | P3 | 防数百次 Gemini 调用 |
+| 9 | Eng | MVP 首个适配器 = **同花顺** + 通用映射 | ✅ 已定（你的实际券商） | P5/P3 | 贴合真实数据 |
+| 10 | Eng | 费用处理 = **计入成本**（+`fee` 列） | ✅ 已定 | P1 | 与对账单一致；手工录入暂 `fee=0` |
+| 11 | Design | 强制预览/确认两步 | Mechanical | P1 | 写库不可一键撤销，先信任后落库 |
+| 12 | Scope | 公司行为/多账户 defer | Mechanical | P2 | 超出 MVP blast radius |
