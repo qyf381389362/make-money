@@ -8,26 +8,50 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import DailySnapshot, Position
 from schemas import RefreshResult
-from services.baostock_service import fetch_prices
+from services.baostock_service import fetch_prices, fetch_fund_prices
 
 router = APIRouter(prefix="/prices", tags=["prices"])
 
 
 @router.post("/refresh", response_model=RefreshResult)
 def refresh_prices(db: Session = Depends(get_db)):
-    symbols = db.execute(select(Position.symbol)).scalars().all()
-    if not symbols:
+    # 同时查询 symbol 和 asset_type，以进行数据源路由
+    positions = db.execute(
+        select(Position.symbol, Position.asset_type)
+    ).all()
+    
+    if not positions:
         return RefreshResult(updated=0, skipped=0, errors=[])
 
-    price_map, errors = fetch_prices(list(symbols))
+    stock_symbols = [p.symbol for p in positions if p.asset_type in ("stock", "etf")]
+    fund_symbols = [p.symbol for p in positions if p.asset_type == "fund"]
+
+    price_map = {}
+    errors = []
+
+    # 1. 股票与 ETF 行情获取 (BaoStock)
+    if stock_symbols:
+        stock_map, stock_errors = fetch_prices(stock_symbols)
+        price_map.update(stock_map)
+        errors.extend(stock_errors)
+
+    # 2. 公募基金行情获取 (天天基金)
+    if fund_symbols:
+        fund_map, fund_errors = fetch_fund_prices(fund_symbols)
+        price_map.update(fund_map)
+        errors.extend(fund_errors)
 
     updated = 0
     skipped = 0
 
     for symbol, (price, date_str) in price_map.items():
-        snapshot_date = date.fromisoformat(date_str)
+        try:
+            snapshot_date = date.fromisoformat(date_str)
+        except ValueError:
+            errors.append(f"{symbol}: 日期格式非法 ({date_str})")
+            continue
 
-        # 检查今天是否已经拉取过，避免触发 IntegrityError 导致事务回滚失效
+        # 检查是否已有该日期该标的的收盘价快照
         existing = db.execute(
             select(DailySnapshot).where(
                 DailySnapshot.symbol == symbol,

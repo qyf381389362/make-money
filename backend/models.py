@@ -33,6 +33,10 @@ class JournalEntry(Base):
     trade_date = Column(Date, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    # 新增字段用于 AI 决策审计
+    motivation_type = Column(String(50), nullable=True)
+    ai_audit = Column(Text, nullable=True)
+
     __table_args__ = (Index("idx_journal_symbol", "symbol"),)
 
 

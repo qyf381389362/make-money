@@ -314,3 +314,74 @@ def test_list_journal_filtering():
     assert len(data) == 1
     assert data[0]["symbol"] == "600519"
 
+
+def test_record_trade_with_ai_audit_empty_reason():
+    # 1. 验证无 reason 时，不调用大模型，直接标记为理性分析
+    client.post(
+        "/positions",
+        json={"symbol": "000002", "name": "万科A", "asset_type": "stock", "shares": 0, "avg_cost": 0},
+    )
+    resp = client.post(
+        "/journal",
+        json={
+            "symbol": "000002",
+            "action": "buy",
+            "shares": 100,
+            "price": 10,
+            "trade_date": "2026-06-08",
+            "reason": ""
+        },
+    )
+    assert resp.status_code == 201
+    entry_id = resp.json()["id"]
+
+    # 模拟测试环境下的 SessionLocal 运行后台任务
+    with patch("routers.journal.SessionLocal", TestingSessionLocal):
+        from routers.journal import audit_journal_entry_task
+        audit_journal_entry_task(entry_id)
+
+    # 重新查询数据库
+    db = TestingSessionLocal()
+    entry = db.query(JournalEntry).filter(JournalEntry.id == entry_id).first()
+    assert entry.motivation_type == "理性分析"
+    assert "未填写" in entry.ai_audit
+    db.close()
+
+
+from unittest.mock import patch
+
+def test_record_trade_with_ai_audit_mocked_success():
+    # 2. 验证有 reason 时，异步触发 AI 审计成功
+    client.post(
+        "/positions",
+        json={"symbol": "000003", "name": "PT", "asset_type": "stock", "shares": 0, "avg_cost": 0},
+    )
+    resp = client.post(
+        "/journal",
+        json={
+            "symbol": "000003",
+            "action": "buy",
+            "shares": 100,
+            "price": 10,
+            "trade_date": "2026-06-08",
+            "reason": "看它天天涨，感觉还要再涨点，赶紧上车"
+        },
+    )
+    assert resp.status_code == 201
+    entry_id = resp.json()["id"]
+    
+    mock_audit = ("追涨杀跌", "看到别人买就盲目跟风，属于明显的羊群效应心理。")
+    with patch("routers.journal.SessionLocal", TestingSessionLocal):
+        with patch("routers.journal.audit_decision", return_value=mock_audit) as mock_func:
+            from routers.journal import audit_journal_entry_task
+            audit_journal_entry_task(entry_id)
+            mock_func.assert_called_once()
+        
+    # 查询数据库，确认字段更新
+    db = TestingSessionLocal()
+    entry = db.query(JournalEntry).filter(JournalEntry.id == entry_id).first()
+    assert entry is not None
+    assert entry.motivation_type == "追涨杀跌"
+    assert "羊群效应" in entry.ai_audit
+    db.close()
+

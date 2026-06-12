@@ -10,12 +10,12 @@
 需要对 `journal_entries` 表增加两个字段，以缓存大模型的异步审计结果：
 ```sql
 ALTER TABLE journal_entries ADD COLUMN motivation_type VARCHAR(20) DEFAULT NULL;
-ALTER TABLE journal_entries ADD COLUMN motivation_analysis TEXT DEFAULT NULL;
+ALTER TABLE journal_entries ADD COLUMN ai_audit TEXT DEFAULT NULL;
 ```
 在 Python SQLAlchemy `models.py` 中对应的实体更新：
 ```python
 motivation_type = Column(String(20), nullable=True)
-motivation_analysis = Column(Text, nullable=True)
+ai_audit = Column(Text, nullable=True)
 ```
 
 ### 1.2 异步 AI 审计工作流 (FastAPI BackgroundTasks)
@@ -31,13 +31,13 @@ motivation_analysis = Column(Text, nullable=True)
        # 4. 更新数据库对应行
    ```
 3. **Gemini API 请求定义**：
-   - **API 端点**：`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}`
+   - **API 端点**：`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}`
    - **请求体 (Payload)**：
      ```json
      {
        "contents": [{
          "parts": [{
-           "text": "你是一位 brutally 且专业的投资心理分析师。分析以下交易决策动机，判定其心理动机类型。\n类型限定为以下之一：['跟风', '恐慌', '盲目冲动', '理性分析', '其它']。\n\n交易明细：\n证券代码：{symbol}\n方向：{action}\n份额：{shares}\n价格：{price}\n决策动机：{reason}\n\n必须且仅返回如下严格的 JSON 格式：\n{\n  \"motivation_type\": \"跟风/恐慌/盲目冲动/理性分析/其它\",\n  \"motivation_analysis\": \"一句话直击要害的心理偏差诊断\"\n}"
+           "text": "你是一位 brutally 且专业的投资心理分析师。分析以下交易决策动机，判定其心理动机类型。\n类型限定为以下之一：['追涨杀跌', '贪婪', '恐慌', '理性分析', '其它']。\n\n交易明细：\n证券代码：{symbol}\n方向：{action}\n份额：{shares}\n价格：{price}\n决策动机：{reason}\n\n必须且仅返回如下严格的 JSON 格式：\n{\n  \"motivation_type\": \"跟风/恐慌/盲目冲动/理性分析/其它\",\n  \"motivation_analysis\": \"一句话直击要害的心理偏差诊断\"\n}"
          }]
        }],
        "generationConfig": {
@@ -46,7 +46,9 @@ motivation_analysis = Column(Text, nullable=True)
      }
      ```
 
-### 1.3 前端统计面板 (AI Dashboard)
+> 注：1.2 的示例 Prompt 仅为早期示意；权威实现以 `backend/services/gemini.py` 为准（枚举 `['追涨杀跌','贪婪','恐慌','理性分析','其它']`，输出字段为 `ai_audit`，而非 `motivation_analysis`）。
+
+### 1.3 前端统计面板 (AI Dashboard) — ✅ 已实现于 `frontend/components/AiMetrics.tsx`
 前端看板增加以“决策动机”为维度的盈亏核算：
 - 聚合每个 `motivation_type` 对应的平仓已实现盈亏 (P&L)。
 - 使用饼图或卡片展示本周“盲目冲动”、“跟风”所带来的亏损占比，以进行心理矫正与行为问责。

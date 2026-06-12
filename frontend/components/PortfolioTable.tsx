@@ -47,11 +47,11 @@ export default function PortfolioTable({ positions, onRefresh, isRefreshing }: P
               <th className="px-4 py-3 text-left">代码 / 名称</th>
               <th className="px-4 py-3 text-right">持仓量</th>
               <th className="px-4 py-3 text-right">均价</th>
-              <th className="px-4 py-3 text-right">现价</th>
+              <th className="px-4 py-3 text-right">现价 / 净值</th>
               <th className="px-4 py-3 text-right">盈亏金额</th>
               <th className="px-4 py-3 text-right">盈亏%</th>
               <th className="px-4 py-3 text-right">总成本</th>
-              <th className="px-4 py-3 text-right">市值</th>
+              <th className="px-4 py-3 text-right">市值 / 资产值</th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
@@ -73,21 +73,33 @@ export default function PortfolioTable({ positions, onRefresh, isRefreshing }: P
                   className="hover:bg-gray-50 transition-colors"
                 >
                   <td className="px-4 py-3">
-                    <span className="font-mono text-xs text-gray-400">{pos.symbol}</span>
-                    <br />
-                    <span className="font-medium text-gray-800">{pos.name}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-mono text-xs text-gray-400">{pos.symbol}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                        pos.asset_type === "fund"
+                          ? "bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400"
+                          : pos.asset_type === "etf"
+                          ? "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400"
+                          : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400"
+                      }`}>
+                        {pos.asset_type === "fund" ? "基金" : pos.asset_type === "etf" ? "ETF" : "股票"}
+                      </span>
+                    </div>
+                    <span className="font-medium text-gray-800 dark:text-gray-200">{pos.name}</span>
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">{shares.toLocaleString()}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">¥{avgCost.toFixed(3)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">
+                    ¥{pos.asset_type === "fund" ? avgCost.toFixed(4) : avgCost.toFixed(3)}
+                  </td>
                   <td className="px-4 py-3 text-right tabular-nums">
                     {currentPrice !== null ? (
                       <span>
-                        ¥{currentPrice.toFixed(3)}
+                        ¥{pos.asset_type === "fund" ? currentPrice.toFixed(4) : currentPrice.toFixed(2)}
                         {pos.is_stale && (
-                          <span className="ml-1 text-xs text-gray-400" title="数据可能过期">⚠</span>
+                          <span className="ml-1 text-xs text-gray-400" title="行情数据超过1天未更新">⚠</span>
                         )}
                         {pos.price_date && (
-                          <span className="block text-xs text-gray-400">{pos.price_date}</span>
+                          <span className="block text-[10px] text-gray-400 mt-0.5">{pos.price_date}</span>
                         )}
                       </span>
                     ) : (
@@ -141,11 +153,11 @@ export function PortfolioTableSkeleton() {
             <th className="px-4 py-3 text-left">代码 / 名称</th>
             <th className="px-4 py-3 text-right">持仓量</th>
             <th className="px-4 py-3 text-right">均价</th>
-            <th className="px-4 py-3 text-right">现价</th>
+            <th className="px-4 py-3 text-right">现价 / 净值</th>
             <th className="px-4 py-3 text-right">盈亏金额</th>
             <th className="px-4 py-3 text-right">盈亏%</th>
             <th className="px-4 py-3 text-right">总成本</th>
-            <th className="px-4 py-3 text-right">市值</th>
+            <th className="px-4 py-3 text-right">市值 / 资产值</th>
             <th className="px-4 py-3" />
           </tr>
         </thead>

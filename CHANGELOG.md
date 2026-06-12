@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [0.2.0.0] - 2026-06-12
+
+### Added
+- **AI 决策动机审计**：接入 Gemini (`gemini-2.5-flash`)，交易日记写入后通过 FastAPI BackgroundTasks 异步审计交易心理（追涨杀跌 / 贪婪 / 恐慌 / 理性分析 / 其它），结果缓存至 `journal_entries.motivation_type` 与 `ai_audit`，并带超时与降级容错。
+- **AI 复盘看板**：新增 `frontend/components/AiMetrics.tsx`，以交易心理健康分、性格雷达、偏误盈亏榜与累计已实现盈亏趋势曲线（recharts）多维呈现行为偏差。
+- **场外公募基金行情**：扩展价格服务，对 6 位 `fund` 代码分流至天天基金接口拉取单位净值，支持场内外混合资产的盈亏核算。
+- **日记搜索与筛选**：`JournalList` 支持按“原因”模糊搜索与筛选。
+- 新增针对 AI 审计与基金价格路由的 `pytest` 用例。
+
+### Changed
+- 同步 `specs/v1b-ai-and-funds.md` 规格与实现：字段名 `ai_audit`（原文档误作 `motivation_analysis`）、模型 `gemini-2.5-flash`、心理类别枚举。
+
 ## [0.1.0.0] - 2026-06-09
 
 ### Added

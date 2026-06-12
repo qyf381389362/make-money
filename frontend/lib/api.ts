@@ -38,6 +38,8 @@ export interface JournalEntry {
   avg_cost_at_time: string | null;
   trade_date: string;
   created_at: string;
+  motivation_type?: string;
+  ai_audit?: string;
 }
 
 export interface RefreshResult {
@@ -70,6 +72,8 @@ export const api = {
       reason?: string;
       trade_date: string;
     }) => request<JournalEntry>("/journal", { method: "POST", body: JSON.stringify(body) }),
+    delete: (id: number) =>
+      fetch(`${BASE}/journal/${id}`, { method: "DELETE" }),
   },
   prices: {
     refresh: () => request<RefreshResult>("/prices/refresh", { method: "POST" }),

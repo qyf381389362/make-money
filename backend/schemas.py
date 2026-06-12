@@ -47,6 +47,8 @@ class JournalOut(BaseModel):
     avg_cost_at_time: Optional[Decimal]
     trade_date: date
     created_at: datetime
+    motivation_type: Optional[str] = None
+    ai_audit: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
