@@ -49,6 +49,7 @@ class JournalOut(BaseModel):
     created_at: datetime
     motivation_type: Optional[str] = None
     ai_audit: Optional[str] = None
+    fee: Optional[Decimal] = None
 
     model_config = {"from_attributes": True}
 
