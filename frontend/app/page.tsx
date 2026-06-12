@@ -5,6 +5,7 @@ import PortfolioTable, { PortfolioTableSkeleton } from "@/components/PortfolioTa
 import JournalList from "@/components/JournalList";
 import AddPositionModal from "@/components/AddPositionModal";
 import AiMetrics from "@/components/AiMetrics";
+import ImportTradesModal from "@/components/ImportTradesModal";
 
 type LoadState = "loading" | "ready" | "error";
 
@@ -14,6 +15,7 @@ export default function Dashboard() {
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [refreshing, setRefreshing] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [filterSymbol, setFilterSymbol] = useState("");
   const [refreshMsg, setRefreshMsg] = useState("");
 
@@ -103,6 +105,12 @@ export default function Dashboard() {
             + 添加持仓
           </button>
           <button
+            onClick={() => setShowImport(true)}
+            className="px-4 py-2 rounded-lg border border-blue-200 text-sm text-blue-600 hover:bg-blue-50 transition-colors"
+          >
+            导入交割单
+          </button>
+          <button
             onClick={handleRefreshPrices}
             disabled={refreshing || positions.length === 0}
             className="px-4 py-2 rounded-lg border text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors"
@@ -171,6 +179,13 @@ export default function Dashboard() {
         <AddPositionModal
           onClose={() => setShowAdd(false)}
           onAdded={load}
+        />
+      )}
+
+      {showImport && (
+        <ImportTradesModal
+          onClose={() => setShowImport(false)}
+          onImported={load}
         />
       )}
     </main>
